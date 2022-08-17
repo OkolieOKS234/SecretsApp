@@ -11,7 +11,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.set("view engine", "ejs");
 
 mongoose.connect("mongodb://localhost:27017/userDB");
-console.log(process.env.SECRET);
+
 const userSchema = new mongoose.Schema({
   firstname: String,
   lastname: String,

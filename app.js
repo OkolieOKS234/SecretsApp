@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
@@ -10,7 +11,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.set("view engine", "ejs");
 
 mongoose.connect("mongodb://localhost:27017/userDB");
-
+console.log(process.env.SECRET);
 const userSchema = new mongoose.Schema({
   firstname: String,
   lastname: String,
@@ -18,12 +19,23 @@ const userSchema = new mongoose.Schema({
   password: String,
 });
 // creating  a secret
-const secret = "Thisisoursecret";
-userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] });
+
+userSchema.plugin(encrypt, {
+  secret: process.env.SECRET,
+  encryptedFields: ["password"],
+});
 
 const User = new mongoose.model("User", userSchema);
+User.deleteMany({ firstname: "David" });
 
 app.get("/", (req, res) => {
+  // User.deleteMany({ firstname: "David" }, (err) => {
+  //   if (!err) {
+  //     console.log("success");
+  //   } else {
+  //     console.log("failed");
+  //   }
+  // });
   res.render("home");
 });
 

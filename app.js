@@ -2,6 +2,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
+const encrypt = require("mongoose-encryption");
 
 const app = express();
 app.use(express.static("public"));
@@ -10,12 +11,16 @@ app.set("view engine", "ejs");
 
 mongoose.connect("mongodb://localhost:27017/userDB");
 
-const userSchema = {
+const userSchema = new mongoose.Schema({
   firstname: String,
   lastname: String,
   email: String,
   password: String,
-};
+});
+// creating  a secret
+const secret = "Thisisoursecret";
+userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] });
+
 const User = new mongoose.model("User", userSchema);
 
 app.get("/", (req, res) => {
@@ -46,23 +51,21 @@ app.post("/register", (req, res) => {
   });
 });
 
-app.post("/login", (req, res){
+app.post("/login", (req, res) => {
   const username = req.body.username;
   const password = req.body.password;
 
-  User.findOne({email:username}, (err, foundUser)=>{
-if(err){
-  console.log(err);
-}else{
-  if(foundUser){
-    if(foundUser.password === password){
-      res.render("secrets")
+  User.findOne({ email: username }, (err, foundUser) => {
+    if (err) {
+      console.log(err);
+    } else {
+      if (foundUser) {
+        if (foundUser.password === password) {
+          res.render("secrets");
+        }
+      }
     }
-  }
-}
-
-  })
-
+  });
 });
 
 app.listen(3000, () => {

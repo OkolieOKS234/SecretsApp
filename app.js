@@ -4,13 +4,30 @@ const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
 const encrypt = require("mongoose-encryption");
-const bcrypt = require("bcrypt");
-const saltRounds = 15;
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
+const { initialize, authenticate } = require("passport");
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
+const findOrCreate = require("mongoose-findorcreate");
 
 const app = express();
 app.use(express.static("public"));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.set("view engine", "ejs");
+
+app.use(
+  session({
+    secret: "My favourite secret",
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+// To initialize passport.js
+app.use(passport.initialize());
+// using sessions in passport
+app.use(passport.session());
 
 mongoose.connect("mongodb://localhost:27017/userDB");
 
@@ -22,22 +39,43 @@ const userSchema = new mongoose.Schema({
 });
 // creating  a secret
 
-userSchema.plugin(encrypt, {
-  secret: process.env.SECRET,
-  encryptedFields: ["password"],
-});
+// userSchema.plugin(encrypt, {
+//   secret: process.env.SECRET,
+//   encryptedFields: ["password"],
+// });
+
+// using passportLocalMongoose and mongoosefindOrcreate
+userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 
 const User = new mongoose.model("User", userSchema);
 User.deleteMany({ firstname: "David" });
 
+passport.use(User.createStrategy());
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
+
+// OAuth
+// options for using
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.CLIENT_ID,
+      clientSecret: process.env.CLIENT_SECRET,
+      callbackURL: "http://localhost:3000/auth/google/secrets",
+      userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
+    },
+    // google will send accesstoken and profile data
+    // findOrCreate is not a mongoose function but a passportjs func
+    (accessToken, refreshToken, profile, cb) => {
+      User.findOrCreate({ googleId: profile.id }, (err, user) => {
+        return cb(err, user);
+      });
+    }
+  )
+);
+
 app.get("/", (req, res) => {
-  // User.deleteMany({ firstname: "David" }, (err) => {
-  //   if (!err) {
-  //     console.log("success");
-  //   } else {
-  //     console.log("failed");
-  //   }
-  // });
   res.render("home");
 });
 
@@ -49,41 +87,52 @@ app.get("/register", (req, res) => {
   res.render("register");
 });
 
-app.post("/register", (req, res) => {
-  bcrypt.hash(req.body.password, saltRounds, function (err, hash) {
-    // Store hash in your password DB.
-
-    const newUser = new User({
-      firstname: req.body.fname,
-      lastname: req.body.lname,
-      email: req.body.username,
-      password: hash,
-    });
-    newUser.save((err) => {
-      if (!err) {
-        res.render("secrets");
-      } else {
-        console.log(err);
-      }
-    });
-  });
+// secrets route to check if the user is authenticated
+app.get("/secrets", (req, res) => {
+  if (req.isAuthenticated()) {
+    res.render("secrets");
+  } else {
+    res.redirect("/login");
+  }
 });
 
-app.post("/login", (req, res) => {
-  const username = req.body.username;
-  const password = req.body.password;
+// Make the user to logout
+app.get("/logout", (req, res) => {
+  req.logOut();
+  res.redirect("/");
+});
 
-  User.findOne({ email: username }, (err, foundUser) => {
-    if (err) {
-      console.log(err);
-    } else {
-      if (foundUser) {
-        bcrypt.compare(password, foundUser.password, function (err, result) {
-          if (result == true) {
-            res.render("secrets");
-          }
+// For registration of the user
+app.post("/register", (req, res) => {
+  User.register(
+    { username: req.body.username },
+    req.body.password,
+    (err, user) => {
+      if (err) {
+        res.redirect("/register");
+      } else {
+        // send the cookie and tell the browser to hold on the cookies
+        passport.authenticate("local")(req, res, () => {
+          res.redirect("/secrets");
         });
       }
+    }
+  );
+});
+// This will be used from passport.js docs
+app.post("/login", (req, res) => {
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password,
+  });
+  req.login(user, (err) => {
+    if (err) {
+      res.redirect("/login");
+    } else {
+      // authenticate the user
+      passport.authenticate("local")(req, res, () => {
+        res.redirect("/secrets");
+      });
     }
   });
 });

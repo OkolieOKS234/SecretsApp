@@ -52,11 +52,18 @@ const User = new mongoose.model("User", userSchema);
 User.deleteMany({ firstname: "David" });
 
 passport.use(User.createStrategy());
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+// This is from passport-local-mongoose
+passport.serializeUser((user, done) => {
+  done(null, user.id);
+});
+passport.deserializeUser((user, done) => {
+  User.findById(id, (err, user) => {
+    done(err, user);
+  });
+});
 
 // OAuth
-// options for using
+// options for using Oauth in my app
 passport.use(
   new GoogleStrategy(
     {
@@ -66,10 +73,11 @@ passport.use(
       userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
     },
     // google will send accesstoken and profile data
-    // findOrCreate is not a mongoose function but a passportjs func
+    // findOrCreate is not a mongoose function but a passportjs function
     (accessToken, refreshToken, profile, cb) => {
       User.findOrCreate({ googleId: profile.id }, (err, user) => {
         return cb(err, user);
+        console.log(profile);
       });
     }
   )
@@ -78,6 +86,23 @@ passport.use(
 app.get("/", (req, res) => {
   res.render("home");
 });
+
+// Authentication route with google
+app.get(
+  "/auth/google",
+  passport.authenticate("google", { scope: ["email", "profile"] })
+);
+
+app.get(
+  "/auth/google/secrets",
+  passport.authenticate("google", {
+    successRedirect: "/auth/google/secrets",
+    failureRedirect: "/login",
+  }),
+  (req, res) => {
+    res.render("/secrets");
+  }
+);
 
 app.get("/login", (req, res) => {
   res.render("login");

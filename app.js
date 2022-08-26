@@ -36,6 +36,8 @@ const userSchema = new mongoose.Schema({
   lastname: String,
   email: String,
   password: String,
+  googleId: String,
+  secret: String,
 });
 // creating  a secret
 
@@ -56,7 +58,7 @@ passport.use(User.createStrategy());
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
-passport.deserializeUser((user, done) => {
+passport.deserializeUser((id, done) => {
   User.findById(id, (err, user) => {
     done(err, user);
   });
@@ -71,13 +73,14 @@ passport.use(
       clientSecret: process.env.CLIENT_SECRET,
       callbackURL: "http://localhost:3000/auth/google/secrets",
       userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
+      scope: ["profile", "email"],
     },
     // google will send accesstoken and profile data
     // findOrCreate is not a mongoose function but a passportjs function
     (accessToken, refreshToken, profile, cb) => {
       User.findOrCreate({ googleId: profile.id }, (err, user) => {
-        return cb(err, user);
         console.log(profile);
+        return cb(err, user);
       });
     }
   )
@@ -96,7 +99,7 @@ app.get(
 app.get(
   "/auth/google/secrets",
   passport.authenticate("google", {
-    successRedirect: "/auth/google/secrets",
+    successRedirect: "/secrets",
     failureRedirect: "/login",
   }),
   (req, res) => {
@@ -114,16 +117,43 @@ app.get("/register", (req, res) => {
 
 // secrets route to check if the user is authenticated
 app.get("/secrets", (req, res) => {
+  // pick out all the secrets field not equal to null
+  User.find({ secrets: { $ne: null } }, (err, foundUser) => {
+    if (err) {
+      console.log(err);
+    } else {
+      if (foundUser) {
+        res.render("secrets", { usersWithSecrets: foundUser });
+      }
+    }
+  });
+});
+// submit route
+app.get("/submit", (req, res) => {
   if (req.isAuthenticated()) {
-    res.render("secrets");
+    res.render("submit");
   } else {
     res.redirect("/login");
   }
 });
+// posting to our submit route
+app.post("/submit", (req, res) => {
+  const submittedSecret = req.body.secret;
+  User.findById(req.user.id, (err, foundUser) => {
+    if (err) {
+      console.log(err);
+    } else {
+      foundUser.secret = submittedSecret;
+      foundUser.save(function () {
+        res.redirect("/secrets");
+      });
+    }
+  });
+});
 
 // Make the user to logout
 app.get("/logout", (req, res) => {
-  req.logOut();
+  // req.logOut();
   res.redirect("/");
 });
 
